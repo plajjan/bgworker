@@ -1,0 +1,17 @@
+module bgworker {
+
+  namespace "http://example.com/bgworker";
+  prefix bgworker;
+
+  container bgworker {
+    leaf enabled {
+      type boolean;
+      default true;
+    }
+    leaf counter {
+      config false;
+      type uint32;
+      default 0;
+    }
+  }
+}
