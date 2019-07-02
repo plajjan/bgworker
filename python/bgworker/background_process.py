@@ -1,4 +1,16 @@
 # -*- mode: python; python-indent: 4 -*-
+"""A micro-framework for running background processes in Cisco NSO Python VM.
+
+Running any kind of background workers in Cisco NSO can be rather tricky. This
+will help you out! Just define a function that does what you want and create a
+Process instance to run it!
+
+We react to:
+- background worker process dying (will restart it)
+- NCS package events, like redeploy
+- configuration changes (disable the background worker)
+- HA events (if we are a slave)
+"""
 import multiprocessing
 import os
 import random
@@ -11,12 +23,14 @@ import ncs
 from ncs.experimental import Subscriber
 
 class Process(threading.Thread):
-    """Supervisor for reacting to various events
+    """Supervisor for running the main background process and reacting to
+    various events
     """
     def __init__(self, app, bg_fun, bg_fun_args=None, config_path=None):
         super(Process, self).__init__()
         self.app = app
         self.bg_fun = bg_fun
+        self.bg_fun_args = bg_fun_args
         self.config_path = config_path
 
         self.log = app.log
@@ -116,7 +130,7 @@ class Process(threading.Thread):
         self.log.info("{}: starting the background worker process".format(self.name))
         # Instead of using the usual worker thread, we use a separate process here.
         # This allows us to terminate the process on package reload / NSO shutdown.
-        self.worker = multiprocessing.Process(target=self.bg_fun)
+        self.worker = multiprocessing.Process(target=self.bg_fun, args=self.bg_fun_args)
         self.worker.start()
 
 
@@ -164,6 +178,17 @@ class ConfigSubscriber(object):
 
 
 class HaEventListener(threading.Thread):
+    """HA Event Listener
+    HA events, like HA-mode transitions, are exposed over a notification API.
+    We listen on that and forward relevant messages over the queue to the
+    supervisor which can act accordingly.
+
+    We use a WaitableEvent rather than a threading.Event since the former
+    allows us to wait on it using a select loop. The HA events are received
+    over a socket which can also be waited upon using a select loop, thus
+    making it possible to wait for the two inputs we have using a single select
+    loop.
+    """
     def __init__(self, app, q):
         super(HaEventListener, self).__init__()
         self.app = app
@@ -229,8 +254,9 @@ class WaitableEvent:
             os.write(self._write_fd, '1')
 
     def fileno(self):
-        """Return the FD number of the read side of the pipe, allows this object to
-        be used with select.select()."""
+        """Return the FD number of the read side of the pipe, allows this
+        object to be used with select.select()
+        """
         return self._read_fd
 
     def __del__(self):
