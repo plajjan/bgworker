@@ -30,6 +30,8 @@ class Process(threading.Thread):
         super(Process, self).__init__()
         self.app = app
         self.bg_fun = bg_fun
+        if bg_fun_args is None:
+            bg_fun_args = []
         self.bg_fun_args = bg_fun_args
         self.config_path = config_path
 
@@ -77,7 +79,6 @@ class Process(threading.Thread):
     def run(self):
         self.app.add_running_thread(self.name + ' (Supervisor)')
 
-        self.log.info("Hello from supervisor")
         while True:
             should_run = self.config_enabled and (not self.ha_enabled or self.ha_master)
 
@@ -97,7 +98,6 @@ class Process(threading.Thread):
                 continue
 
             k, v = item
-            self.log.info("Got an event! k: {} v: {}".format(k, v))
             if k == 'exit':
                 return
             elif k == 'enabled':
