@@ -6,10 +6,10 @@ will help you out! Just define a function that does what you want and create a
 Process instance to run it!
 
 We react to:
-- background worker process dying (will restart it)
-- NCS package events, like redeploy
-- configuration changes (disable the background worker)
-- HA events (if we are a slave)
+ - background worker process dying (will restart it)
+ - NCS package events, like redeploy
+ - configuration changes (disable the background worker)
+ - HA events (if we are a slave)
 """
 import multiprocessing
 import os
