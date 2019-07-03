@@ -117,20 +117,20 @@ class Process(threading.Thread):
         """stop is called when the supervisor thread should stop and is part of
         the standard Python interface for threading.Thread
         """
+        # stop the HA event listener
+        self.ha_event_listener.stop()
+
         # stop CDB subscriber
         if self.config_path is not None:
             self.config_subscriber.stop()
 
-        # stop the HA event listener
-        self.ha_event_listener.stop()
+        # stop us, the supervisor
+        self.q.put(('exit', None))
+        self.join()
+        self.app.del_running_thread(self.name + ' (Supervisor)')
 
         # stop the background worker process
         self.worker_stop()
-
-        # stop us, the supervisor
-        self.q.put(('exit',))
-        self.join()
-        self.app.del_running_thread(self.name + ' (Supervisor)')
 
 
     def worker_start(self):
