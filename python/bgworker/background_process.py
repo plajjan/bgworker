@@ -259,7 +259,7 @@ class WaitableEvent:
 
     def set(self):
         if not self.isSet():
-            os.write(self._write_fd, '1')
+            os.write(self._write_fd, b'1')
 
     def fileno(self):
         """Return the FD number of the read side of the pipe, allows this
