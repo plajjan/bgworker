@@ -16,16 +16,14 @@ import os
 import select
 import socket
 import threading
-import sys
-# queue module is called Queue in py2, we import with py3 name since the
-# exposed interface is similar enough
-if sys.version_info[0] < 3:
-    import Queue as queue
-else:
-    import queue
 
 import ncs
-from ncs.experimental import Subscriber
+# queue module is called Queue in py2, we import with py3 name since the
+# exposed interface is similar enough
+try:
+    import queue
+except ImportError:
+    import Queue as queue
 
 class Process(threading.Thread):
     """Supervisor for running the main background process and reacting to
