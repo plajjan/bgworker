@@ -18,6 +18,7 @@ import socket
 import threading
 
 import ncs
+from ncs.experimental import Subscriber
 # queue module is called Queue in py2, we import with py3 name since the
 # exposed interface is similar enough
 try:
@@ -47,7 +48,7 @@ class Process(threading.Thread):
 
         # start the config subscriber thread
         if self.config_path is not None:
-            self.config_subscriber = ncs.experimental.Subscriber(app=self.app, log=self.log)
+            self.config_subscriber = Subscriber(app=self.app, log=self.log)
             subscriber_iter = ConfigSubscriber(self.q, self.config_path)
             subscriber_iter.register(self.config_subscriber)
             self.config_subscriber.start()
