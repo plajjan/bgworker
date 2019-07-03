@@ -13,11 +13,9 @@ We react to:
 """
 import multiprocessing
 import os
-import random
 import select
 import socket
 import threading
-import time
 import sys
 # queue module is called Queue in py2, we import with py3 name since the
 # exposed interface is similar enough
