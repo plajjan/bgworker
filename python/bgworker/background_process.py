@@ -214,6 +214,7 @@ class HaEventListener(threading.Thread):
         while True:
             rl, _, _ = select.select([self.exit_flag, event_socket], [], [])
             if self.exit_flag in rl:
+                event_socket.close()
                 return
 
             notification = events.read_notification(event_socket)
@@ -225,8 +226,6 @@ class HaEventListener(threading.Thread):
                 self.q.put(('ha-mode', 'master'))
             elif ha_notif_type == events.HA_INFO_IS_NONE:
                 self.q.put(('ha-mode', 'none'))
-
-        event_socket.close()
 
     def stop(self):
         self.exit_flag.set()
