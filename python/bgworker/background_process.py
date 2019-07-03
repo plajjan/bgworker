@@ -80,7 +80,7 @@ class Process(threading.Thread):
             # determine HA state if HA is enabled
             if self.ha_enabled:
                 ha_mode = str(ncs.maagic.get_node(t_read, '/tfnm:ncs-state/tfnm:ha/tfnm:mode'))
-                self.ha_master = (mode == 'master')
+                self.ha_master = (ha_mode == 'master')
 
 
     def run(self):
