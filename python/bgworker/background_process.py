@@ -172,11 +172,11 @@ class ConfigSubscriber(object):
     def pre_iterate(self):
         return {'enabled': False}
 
-    def iterate(self, keypath, operation_unused, oldval_unused, newval, state):
+    def iterate(self, keypath_unused, operation_unused, oldval_unused, newval, state):
         state['enabled'] = newval
         return ncs.ITER_RECURSE
 
-    def should_post_iterate(self, state):
+    def should_post_iterate(self, state_unused):
         return True
 
     def post_iterate(self, state):
