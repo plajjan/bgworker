@@ -44,7 +44,7 @@ class Process(threading.Thread):
 
         self.log = app.log
         self.name = "{}.{}".format(self.app.__class__.__module__,
-                                    self.app.__class__.__name__)
+                                   self.app.__class__.__name__)
 
         self.log.info("{} supervisor starting".format(self.name))
         self.q = multiprocessing.Queue()
