@@ -1,7 +1,5 @@
 # -*- mode: python; python-indent: 4 -*-
-import multiprocessing
 import random
-import threading
 import time
 import sys
 

@@ -13,11 +13,9 @@ We react to:
 """
 import multiprocessing
 import os
-import random
 import select
 import socket
 import threading
-import time
 import sys
 # queue module is called Queue in py2, we import with py3 name since the
 # exposed interface is similar enough
@@ -44,7 +42,7 @@ class Process(threading.Thread):
 
         self.log = app.log
         self.name = "{}.{}".format(self.app.__class__.__module__,
-                                    self.app.__class__.__name__)
+                                   self.app.__class__.__name__)
 
         self.log.info("{} supervisor starting".format(self.name))
         self.q = multiprocessing.Queue()
@@ -62,25 +60,32 @@ class Process(threading.Thread):
 
         self.worker = None
 
-        # read initial configuration
-        with ncs.maapi.single_read_trans('{}_supervisor'.format(self.name), 'system', db=ncs.OPERATIONAL) as t_read:
-            if config_path is not None:
-                enabled = t_read.get_elem(self.config_path)
-                self.config_enabled = bool(enabled)
-            else:
-                # if there is no config_path we assume the process is always enabled
-                self.config_enabled = True
+        # Read initial configuration, using two separate transactions
+        with ncs.maapi.Maapi() as m:
+            with ncs.maapi.Session(m, '{}_supervisor'.format(self.name), 'system'):
+                # in the 1st transaction read config data from the 'enabled' leaf
+                with m.start_read_trans() as t_read:
+                    if config_path is not None:
+                        enabled = t_read.get_elem(self.config_path)
+                        self.config_enabled = bool(enabled)
+                    else:
+                        # if there is no config_path we assume the process is always enabled
+                        self.config_enabled = True
 
-            # check if HA is enabled
-            if t_read.exists("/tfnm:ncs-state/tfnm:ha"):
-                self.ha_enabled = True
-            else:
-                self.ha_enabled = False
+                # In the 2nd transaction read operational data regarding HA.
+                # This is an expensive operation invoking a data provider, thus
+                # we don't want to incur any unnecessary locks
+                with m.start_read_trans(db=ncs.OPERATIONAL) as oper_t_read:
+                    # check if HA is enabled
+                    if oper_t_read.exists("/tfnm:ncs-state/tfnm:ha"):
+                        self.ha_enabled = True
+                    else:
+                        self.ha_enabled = False
 
-            # determine HA state if HA is enabled
-            if self.ha_enabled:
-                ha_mode = str(ncs.maagic.get_node(t_read, '/tfnm:ncs-state/tfnm:ha/tfnm:mode'))
-                self.ha_master = (mode == 'master')
+                    # determine HA state if HA is enabled
+                    if self.ha_enabled:
+                        ha_mode = str(ncs.maagic.get_node(oper_t_read, '/tfnm:ncs-state/tfnm:ha/tfnm:mode'))
+                        self.ha_master = (ha_mode == 'master')
 
 
     def run(self):
@@ -172,11 +177,11 @@ class ConfigSubscriber(object):
     def pre_iterate(self):
         return {'enabled': False}
 
-    def iterate(self, keypath, operation_unused, oldval_unused, newval, state):
+    def iterate(self, keypath_unused, operation_unused, oldval_unused, newval, state):
         state['enabled'] = newval
         return ncs.ITER_RECURSE
 
-    def should_post_iterate(self, state):
+    def should_post_iterate(self, state_unused):
         return True
 
     def post_iterate(self, state):
@@ -214,6 +219,7 @@ class HaEventListener(threading.Thread):
         while True:
             rl, _, _ = select.select([self.exit_flag, event_socket], [], [])
             if self.exit_flag in rl:
+                event_socket.close()
                 return
 
             notification = events.read_notification(event_socket)
@@ -225,8 +231,6 @@ class HaEventListener(threading.Thread):
                 self.q.put(('ha-mode', 'master'))
             elif ha_notif_type == events.HA_INFO_IS_NONE:
                 self.q.put(('ha-mode', 'none'))
-
-        event_socket.close()
 
     def stop(self):
         self.exit_flag.set()
@@ -242,7 +246,7 @@ class WaitableEvent:
         self._read_fd, self._write_fd = os.pipe()
 
     def wait(self, timeout=None):
-        rfds, wfds, efds = select.select([self._read_fd], [], [], timeout)
+        rfds, _, _ = select.select([self._read_fd], [], [], timeout)
         return self._read_fd in rfds
 
     def is_set(self):
