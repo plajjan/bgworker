@@ -18,6 +18,13 @@ import select
 import socket
 import threading
 import time
+import sys
+# queue module is called Queue in py2, we import with py3 name since the
+# exposed interface is similar enough
+if sys.version_info[0] < 3:
+    import Queue as queue
+else:
+    import queue
 
 import ncs
 from ncs.experimental import Subscriber
@@ -91,10 +98,9 @@ class Process(threading.Thread):
                 self.log.info("Background worker process is running but should not run, stopping")
                 self.worker_stop()
 
-            import Queue
             try:
                 item = self.q.get(timeout=1)
-            except Queue.Empty:
+            except queue.Empty:
                 continue
 
             k, v = item

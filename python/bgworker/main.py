@@ -8,7 +8,7 @@ import sys
 import ncs
 from ncs.application import Service
 
-import background_process
+from . import background_process
 
 def bg_worker():
     import logging
