@@ -242,7 +242,7 @@ class WaitableEvent:
         self._read_fd, self._write_fd = os.pipe()
 
     def wait(self, timeout=None):
-        rfds, wfds, efds = select.select([self._read_fd], [], [], timeout)
+        rfds, _, _ = select.select([self._read_fd], [], [], timeout)
         return self._read_fd in rfds
 
     def is_set(self):
