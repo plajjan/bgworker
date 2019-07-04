@@ -170,21 +170,27 @@ class Process(threading.Thread):
         the standard Python interface for threading.Thread
         """
         # stop the HA event listener
+        self.log.debug("{}: stopping HA event listener".format(self.name))
         self.ha_event_listener.stop()
 
         # stop CDB subscriber
+        self.log.debug("{}: stopping CDB config subscriber".format(self.name))
         if self.config_path is not None:
             self.config_subscriber.stop()
 
         # stop the logging QueueListener
+        self.log.debug("{}: stopping logging QueueListener".format(self.name))
         self.queue_listener.stop()
 
         # stop us, the supervisor
+        self.log.debug("{}: stopping supervisor thread".format(self.name))
+
         self.q.put(('exit', None))
         self.join()
         self.app.del_running_thread(self.name + ' (Supervisor)')
 
         # stop the background worker process
+        self.log.debug("{}: stopping background worker process".format(self.name))
         self.worker_stop()
 
 
@@ -206,6 +212,9 @@ class Process(threading.Thread):
         """Stops the background worker process
         """
         self.log.info("{}: stopping the background worker process".format(self.name))
+        if self.worker is None:
+            self.log.info("{}: background worker is not running".format(self.name))
+            return
         self.worker.terminate()
         self.worker.join(timeout=1)
         if self.worker.is_alive():
