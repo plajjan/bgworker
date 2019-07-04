@@ -18,6 +18,7 @@ import os
 import select
 import socket
 import threading
+import traceback
 import typing
 
 import ncs
@@ -137,27 +138,31 @@ class Process(threading.Thread):
         self.app.add_running_thread(self.name + ' (Supervisor)')
 
         while True:
-            should_run = self.config_enabled and (not self.ha_enabled or self.ha_master)
-
-            if should_run and (self.worker is None or not self.worker.is_alive()):
-                self.log.info("Background worker process should run but is not running, starting")
-                if self.worker is not None:
-                    self.worker_stop()
-                self.worker_start()
-            if self.worker is not None and self.worker.is_alive() and not should_run:
-                self.log.info("Background worker process is running but should not run, stopping")
-                self.worker_stop()
-
             try:
-                item = self.q.get(timeout=1)
-            except queue.Empty:
-                continue
+                should_run = self.config_enabled and (not self.ha_enabled or self.ha_master)
 
-            k, v = item
-            if k == 'exit':
-                return
-            elif k == 'enabled':
-                self.config_enabled = v
+                if should_run and (self.worker is None or not self.worker.is_alive()):
+                    self.log.info("Background worker process should run but is not running, starting")
+                    if self.worker is not None:
+                        self.worker_stop()
+                    self.worker_start()
+                if self.worker is not None and self.worker.is_alive() and not should_run:
+                    self.log.info("Background worker process is running but should not run, stopping")
+                    self.worker_stop()
+
+                try:
+                    item = self.q.get(timeout=1)
+                except queue.Empty:
+                    continue
+
+                k, v = item
+                if k == 'exit':
+                    return
+                elif k == 'enabled':
+                    self.config_enabled = v
+            except Exception as e:
+                self.log.error('Unhandled exception in the supervisor thread', e)
+                self.log.debug(traceback.format_exc())
 
 
     def stop(self):
