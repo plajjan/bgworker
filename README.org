@@ -1,4 +1,5 @@
-# bgworker - a Python background worker for Cisco NSO
+#+TITLE: bgworker - a Python background worker for Cisco NSO
+
 bgworker is an NSO package that shows how we can implement a background worker
 process in Python for Cisco NSO.
 
@@ -41,8 +42,39 @@ it. NSO 5.3 deprecates support for Python 2. It is weird that NSO doesn't ship
 with using Python 3 per default, so you have to enable this yourself (it is
 documented in the user guide).
 
-## BUGS
+* BUGS
 There's a pretty bad bug in a lot of versions of Python that leads to hanging
 due to an incorrect lock handling across multiple threads or processes. More
-information can be found at: https://bugs.python.org/issue6721
-To should be fixed in Python 3.7.1 or later.
+information can be found at: https://bugs.python.org/issue6721 This should be
+fixed in Python 3.7.1 or later.
+
+* TODO
+
+- [ ] write a more complete example showing how we can subscribe to config
+      changes in worker process
+- [ ] potentially work out best practice when it comes to error handling in
+      worker process
+  - for example, the following seems like a pretty common and intuitive pattern
+    #+BEGIN_SRC python
+      def bg_function():
+          with ncs.maapi.Maapi() as m:
+              with ncs.maapi.Session(m, 'something', 'system'):
+                  while True:
+                      try:
+                          # do work here
+
+                      except:
+                          # handle faults
+    #+END_SRC
+
+    The problem is that if the maapi session fails there is no retry loop around
+    it. There is however an inner retry loop and we have the try/except in there
+    which means that is where we are going to catch the maapi session failure,
+    when we try to use it. When it fails, we will just retry but as we are in
+    the same maapi context and it won't automatically reconnect, we will run
+    into the same error. It is better to remove the try/except and let the whole
+    process fail. The background_process supervisor will see the dead worker
+    process and restart it. Alternatively an outer while True loop is added, in
+    which case we probably should break up the code into multiple functions
+    since being 5-6 levels of nesting deep before you start writing your actual
+    application code is pretty appalling.
