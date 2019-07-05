@@ -35,3 +35,14 @@ loading whatever HAFW package you want, enabling HA in NCS and using the HAFW
 package functionality to switch to master mode or away from master mode, which
 should then lead to starting or stopping the background worker process
 respectively.
+
+This code is written for Python 3. Python 2 is dead and you should stop using
+it. NSO 5.3 deprecates support for Python 2. It is weird that NSO doesn't ship
+with using Python 3 per default, so you have to enable this yourself (it is
+documented in the user guide).
+
+## BUGS
+There's a pretty bad bug in a lot of versions of Python that leads to hanging
+due to an incorrect lock handling across multiple threads or processes. More
+information can be found at: https://bugs.python.org/issue6721
+To should be fixed in Python 3.7.1 or later.
