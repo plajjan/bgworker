@@ -1,8 +1,8 @@
 # -*- mode: python; python-indent: 4 -*-
 import logging
 import random
-import time
 import sys
+import time
 
 import ncs
 from ncs.application import Service
