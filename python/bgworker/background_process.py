@@ -11,11 +11,14 @@ We react to:
  - configuration changes (disable the background worker)
  - HA events (if we are a slave)
 """
+import logging
+import logging.handlers
 import multiprocessing
 import os
 import select
 import socket
 import threading
+import typing
 
 import ncs
 from ncs.experimental import Subscriber
@@ -25,6 +28,40 @@ try:
     import queue
 except ImportError:
     import Queue as queue
+
+
+def _get_handler_impls(logger: logging.Logger) -> typing.Iterable[logging.Handler]:
+    """For a given Logger instance, find the registered handlers.
+
+    A Logger instance may have handlers registered in the 'handlers' list.
+    Usually there is one handler registered to the Root Logger.
+    This function uses the same algorithm as Logger.callHandlers to find
+    all relevant handlers.
+    """
+
+    c = logger
+    while c:
+        for hdlr in c.handlers:
+            yield hdlr
+        if not c.propagate:
+            c = None    #break out
+        else:
+            c = c.parent
+
+
+def _bg_wrapper(bg_fun, q, log_level, *bg_fun_args):
+    """Internal wrapper for the background worker function.
+
+    Used to set up logging via a QueueHandler in the child process. The other end
+    of the queue is observed by a QueueListener in the parent process.
+    """
+    queue_hdlr = logging.handlers.QueueHandler(q)
+    root = logging.getLogger()
+    root.setLevel(log_level)
+    root.addHandler(queue_hdlr)
+    logger = logging.getLogger(bg_fun.__name__)
+    bg_fun(logger, *bg_fun_args)
+
 
 class Process(threading.Thread):
     """Supervisor for running the main background process and reacting to
@@ -45,7 +82,7 @@ class Process(threading.Thread):
 
         self.mp_ctx = multiprocessing.get_context('spawn')
         self.log.info("{} supervisor starting".format(self.name))
-        self.q = self.mp_ctx.Queue()
+        self.q = queue.Queue()
 
         # start the config subscriber thread
         if self.config_path is not None:
@@ -57,6 +94,14 @@ class Process(threading.Thread):
         # start the HA event listener thread
         self.ha_event_listener = HaEventListener(app=self.app, q=self.q)
         self.ha_event_listener.start()
+
+        # start the logging QueueListener thread
+        hdlrs = list(_get_handler_impls(self.app._logger))
+        self.log.debug("Found handlers: ", hdlrs)
+        self.log_queue = self.mp_ctx.Queue()
+        self.queue_listener = logging.handlers.QueueListener(self.log_queue, *hdlrs, respect_handler_level=True)
+        self.queue_listener.start()
+        self.current_log_level = self.app._logger.getEffectiveLevel()
 
         self.worker = None
 
@@ -126,6 +171,9 @@ class Process(threading.Thread):
         if self.config_path is not None:
             self.config_subscriber.stop()
 
+        # stop the logging QueueListener
+        self.queue_listener.stop()
+
         # stop us, the supervisor
         self.q.put(('exit', None))
         self.join()
@@ -141,7 +189,11 @@ class Process(threading.Thread):
         self.log.info("{}: starting the background worker process".format(self.name))
         # Instead of using the usual worker thread, we use a separate process here.
         # This allows us to terminate the process on package reload / NSO shutdown.
-        self.worker = self.mp_ctx.Process(target=self.bg_fun, args=self.bg_fun_args)
+
+        # Instead of calling the bg_fun worker function directly, call our
+        # internal wrapper to set up inter-process logging through a queue.
+        args = [self.bg_fun, self.log_queue, self.current_log_level] + self.bg_fun_args
+        self.worker = self.mp_ctx.Process(target=_bg_wrapper, args=args)
         self.worker.start()
 
 

@@ -8,9 +8,7 @@ from ncs.application import Service
 
 from . import background_process
 
-def bg_worker():
-    import logging
-    log = logging.getLogger()
+def bg_worker(log):
     while True:
         with ncs.maapi.single_write_trans('bgworker', 'system', db=ncs.OPERATIONAL) as oper_trans_write:
             root = ncs.maagic.get_root(oper_trans_write)
