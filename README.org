@@ -42,15 +42,19 @@ it. NSO 5.3 deprecates support for Python 2. It is weird that NSO doesn't ship
 with using Python 3 per default, so you have to enable this yourself (it is
 documented in the user guide).
 
+
 * BUGS
-There's a pretty bad bug in a lot of versions of Python that leads to hanging
-due to an incorrect lock handling across multiple threads or processes. More
-information can be found at: https://bugs.python.org/issue6721. To avoid this,
-we instruct the multiprocessing module to 'spawn' new processes instead of using
-the default 'fork'.
+  - [ ] logging levels can't seem to be reconfigured. Have to redeploy package
+    to use new level.
 
-* TODO
+* To Do
 
+- [ ] describe the design
+  - [ ] why multiprocessing?
+  - [ ] why threads?
+    - [ ] why so many?
+  - [ ] why multiprocessing AND threads?
+  - [ ] what's up with the logger stuff?
 - [ ] write a more complete example showing how we can subscribe to config
       changes in worker process
 - [ ] potentially work out best practice when it comes to error handling in
