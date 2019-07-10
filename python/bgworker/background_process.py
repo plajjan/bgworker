@@ -60,8 +60,7 @@ def _bg_wrapper(bg_fun, q, log_level, *bg_fun_args):
     root = logging.getLogger()
     root.setLevel(log_level)
     root.addHandler(queue_hdlr)
-    logger = logging.getLogger(bg_fun.__name__)
-    bg_fun(logger, *bg_fun_args)
+    bg_fun(*bg_fun_args)
 
 
 class Process(threading.Thread):

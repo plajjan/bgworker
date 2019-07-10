@@ -1,4 +1,5 @@
 # -*- mode: python; python-indent: 4 -*-
+import logging
 import random
 import time
 import sys
@@ -8,7 +9,9 @@ from ncs.application import Service
 
 from . import background_process
 
-def bg_worker(log):
+def bg_worker():
+    log = logging.getLogger()
+
     while True:
         with ncs.maapi.single_write_trans('bgworker', 'system', db=ncs.OPERATIONAL) as oper_trans_write:
             root = ncs.maagic.get_root(oper_trans_write)
