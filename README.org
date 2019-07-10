@@ -42,6 +42,84 @@ it. NSO 5.3 deprecates support for Python 2. It is weird that NSO doesn't ship
 with using Python 3 per default, so you have to enable this yourself (it is
 documented in the user guide).
 
+* Recommended use / design pattern
+** A note on error handling and anti-patterns
+   It appears the following is a rather intuitive code pattern:
+   #+BEGIN_SRC python
+     def bg_function():
+         with ncs.maapi.Maapi() as m:
+             with ncs.maapi.Session(m, 'something', 'system'):
+                 while True:
+                     try:
+                         # do work here
+
+                     except:
+                         # handle faults
+   #+END_SRC
+
+   You should not write code like that!
+
+   The problem is with the placement of the while-True-try-except loop in
+   relation to the maapi context managers. An exception occurring in this loop
+   will be caught and then retried, which is the sought after behaviour. It will
+   however be retried within the same maapi context manager and if the exception
+   was related to the maapi session, like a maapi connection failure, then it
+   will be retried with the same maapi session which is still broken. The maapi
+   session context manager does not automatically reconnect. MAAPI related
+   exceptions are somewhat rare and won't show up in most code but the above
+   pattern exacerbates the problem as it continuously retries with the same
+   broken maapi session.
+
+   This should be obvious but as 100% of the beta developers that tried using
+   background_process implemented this exact anti-pattern, it was obvious that a
+   note of warning was needed.
+
+   There are multiple solutions. The while-try loop can be moved to encapsulate
+   the context managers like so:
+
+   #+BEGIN_SRC python
+     def bg_function():
+         while True:
+             try:
+                 with ncs.maapi.Maapi() as m:
+                     with ncs.maapi.Session(m, 'something', 'system'):
+                         # do work here
+
+         except:
+             # handle faults
+   #+END_SRC
+
+   It is relatively expensive setting up a Maapi session, so keeping them
+   somewhat long lived is desirable. It naturally depends on the type of work
+   you are carrying out of the overhead of opening new sessions is relevant or
+   not. If each cycle takes minute, the overhead is likely negligible while if a
+   cycle is on the order of a few seconds then you should probably consider a
+   pattern where you try to persist the session over multiple work cycles.
+
+   A surprisingly simple way of dealing with this is to remove the exception
+   handler:
+
+   #+BEGIN_SRC python
+     def bg_function():
+         with ncs.maapi.Maapi() as m:
+             with ncs.maapi.Session(m, 'something', 'system'):
+                 while True:
+                     # do work here
+   #+END_SRC
+
+   The child process will die but as the background_process supervisor monitors
+   the child it will be restarted in about a second.
+
+   The exception handler can be made more specific to not catch the maapi
+   exceptions (instead letting the child die for that case and rely on the
+   supervisor for restart). This is probably a better approach as soon as your
+   worker function reaches some level of complexity in which case more complete
+   exception handling is necessary.
+
+   Alternatively an outer while True loop is added, in which case we probably
+   should break up the code into multiple functions since being 5-6 levels of
+   nesting deep before you start writing your actual application code is pretty
+   appalling.
 
 * BUGS
   - [ ] logging levels can't seem to be reconfigured. Have to redeploy package
@@ -57,29 +135,3 @@ documented in the user guide).
   - [ ] what's up with the logger stuff?
 - [ ] write a more complete example showing how we can subscribe to config
       changes in worker process
-- [ ] potentially work out best practice when it comes to error handling in
-      worker process
-  - for example, the following seems like a pretty common and intuitive pattern
-    #+BEGIN_SRC python
-      def bg_function():
-          with ncs.maapi.Maapi() as m:
-              with ncs.maapi.Session(m, 'something', 'system'):
-                  while True:
-                      try:
-                          # do work here
-
-                      except:
-                          # handle faults
-    #+END_SRC
-
-    The problem is that if the maapi session fails there is no retry loop around
-    it. There is however an inner retry loop and we have the try/except in there
-    which means that is where we are going to catch the maapi session failure,
-    when we try to use it. When it fails, we will just retry but as we are in
-    the same maapi context and it won't automatically reconnect, we will run
-    into the same error. It is better to remove the try/except and let the whole
-    process fail. The background_process supervisor will see the dead worker
-    process and restart it. Alternatively an outer while True loop is added, in
-    which case we probably should break up the code into multiple functions
-    since being 5-6 levels of nesting deep before you start writing your actual
-    application code is pretty appalling.
