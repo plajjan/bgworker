@@ -43,8 +43,9 @@ class Process(threading.Thread):
         self.name = "{}.{}".format(self.app.__class__.__module__,
                                    self.app.__class__.__name__)
 
+        self.mp_ctx = multiprocessing.get_context('spawn')
         self.log.info("{} supervisor starting".format(self.name))
-        self.q = multiprocessing.Queue()
+        self.q = self.mp_ctx.Queue()
 
         # start the config subscriber thread
         if self.config_path is not None:
@@ -140,7 +141,7 @@ class Process(threading.Thread):
         self.log.info("{}: starting the background worker process".format(self.name))
         # Instead of using the usual worker thread, we use a separate process here.
         # This allows us to terminate the process on package reload / NSO shutdown.
-        self.worker = multiprocessing.Process(target=self.bg_fun, args=self.bg_fun_args)
+        self.worker = self.mp_ctx.Process(target=self.bg_fun, args=self.bg_fun_args)
         self.worker.start()
 
 
