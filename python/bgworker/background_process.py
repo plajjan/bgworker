@@ -105,6 +105,8 @@ class Process(threading.Thread):
                                    self.app.__class__.__name__)
         self.log.info("{} supervisor starting".format(self.name))
 
+        self.vmid = self.app._ncs_id
+
         self.mp_ctx = multiprocessing.get_context('spawn')
         self.q = queue.Queue()
 
@@ -129,7 +131,7 @@ class Process(threading.Thread):
         # start log config CDB subscriber
         self.log_config_q = self.mp_ctx.Queue()
         self.log_config_subscriber = Subscriber(app=self.app, log=self.log)
-        log_subscriber_iter = LogConfigSubscriber(self.log_config_q)
+        log_subscriber_iter = LogConfigSubscriber(self.log_config_q, self.vmid)
         log_subscriber_iter.register(self.log_config_subscriber)
         self.log_config_subscriber.start()
 
@@ -291,30 +293,56 @@ class ConfigSubscriber(object):
 class LogConfigSubscriber(object):
     """CDB subscriber for python-vm logging level
 
-    This subscribers monitors /python-vm/logging/level and propagates any
-    changes to the child process which can then in turn log at the appropriate
-    level.
+    This subscribers monitors /python-vm/logging/level and
+    /python-vm/logging/vm-levels{vmid}/level and propagates any changes to the
+    child process which can then in turn log at the appropriate level. VM
+    specific level naturally take precedence over the global level.
     """
-    def __init__(self, q):
+    def __init__(self, q, vmid):
         self.q = q
+        self.vmid = vmid
+
+        # read in initial values for these nodes
+        # a CDB subscriber only naturally gets changes but if we are to emit a
+        # sane value we have to know what both underlying (global & vm specific
+        # log level) are and thus must read it in first
+        with ncs.maapi.single_read_trans('', 'system') as t_read:
+            try:
+                self.global_level = ncs.maagic.get_node(t_read, '/python-vm/logging/level')
+            except:
+                self.global_level = None
+            try:
+                self.vm_level = ncs.maagic.get_node(t_read, '/python-vm/logging/vm-levels{{{}}}/level'.format(self.vmid))
+            except:
+                self.vm_level = None
 
     def register(self, subscriber):
         subscriber.register('/python-vm/logging/level', priority=101, iter_obj=self)
+        # we don't include /level here at the end as then we won't get notified
+        # when the whole vm-levels list entry is deleted, we still get when
+        # /levels is being set though (and it is mandatory so we know it will
+        # always be there for whenever a vm-levels list entry exists)
+        subscriber.register('/python-vm/logging/vm-levels{{{}}}'.format(self.vmid), priority=101, iter_obj=self)
 
     def pre_iterate(self):
-        return {'level': 0}
+        return {}
 
-    def iterate(self, keypath_unused, operation_unused, oldval_unused, newval, state):
-        # the log level enum in the YANG model maps the integer values to
-        # python log levels quite nicely just by adding 1 and multiplying by 10
-        state['level'] = (int(newval)+1) * 10
+    def iterate(self, keypath, operation_unused, oldval_unused, newval, unused_state):
+        if str(keypath[-3]) == "vm-levels":
+            self.vm_level = newval
+        else:
+            self.global_level = newval
         return ncs.ITER_RECURSE
 
-    def should_post_iterate(self, state_unused):
+    def should_post_iterate(self, unused_state):
         return True
 
-    def post_iterate(self, state):
-        self.q.put(("log-level", state['level']))
+    def post_iterate(self, unused_state):
+        # the log level enum in the YANG model maps the integer values to
+        # python log levels quite nicely just by adding 1 and multiplying by 10
+        configured_level = int(self.vm_level or self.global_level)
+        new_level = (configured_level+1)*10
+        self.q.put(("log-level", new_level))
 
 
 class HaEventListener(threading.Thread):
