@@ -50,17 +50,41 @@ def _get_handler_impls(logger: logging.Logger) -> typing.Iterable[logging.Handle
             c = c.parent
 
 
-def _bg_wrapper(q, log_level, bg_fun, *bg_fun_args):
+def _bg_wrapper(log_q, log_config_q, log_level, bg_fun, *bg_fun_args):
     """Internal wrapper for the background worker function.
 
     Used to set up logging via a QueueHandler in the child process. The other end
     of the queue is observed by a QueueListener in the parent process.
     """
-    queue_hdlr = logging.handlers.QueueHandler(q)
+    queue_hdlr = logging.handlers.QueueHandler(log_q)
     root = logging.getLogger()
     root.setLevel(log_level)
     root.addHandler(queue_hdlr)
+
+    # thread to monitor log level changes and reconfigure the root logger level
+    log_reconf = LogReconfigurator(log_config_q, root)
+    log_reconf.start()
+
     bg_fun(*bg_fun_args)
+
+
+class LogReconfigurator(threading.Thread):
+    def __init__(self, q, log_root):
+        super(LogReconfigurator, self).__init__()
+        self.daemon = True
+        self.q = q
+        self.log_root = log_root
+
+    def run(self):
+        while True:
+            k, v = self.q.get()
+            if k is 'exit':
+                return
+
+            self.log_root.setLevel(v)
+
+    def stop(self):
+        self.q.put(('exit', None))
 
 
 class Process(threading.Thread):
@@ -79,9 +103,9 @@ class Process(threading.Thread):
         self.log = app.log
         self.name = "{}.{}".format(self.app.__class__.__module__,
                                    self.app.__class__.__name__)
+        self.log.info("{} supervisor starting".format(self.name))
 
         self.mp_ctx = multiprocessing.get_context('spawn')
-        self.log.info("{} supervisor starting".format(self.name))
         self.q = queue.Queue()
 
         # start the config subscriber thread
@@ -97,11 +121,17 @@ class Process(threading.Thread):
 
         # start the logging QueueListener thread
         hdlrs = list(_get_handler_impls(self.app._logger))
-        self.log.debug("Found handlers: ", hdlrs)
         self.log_queue = self.mp_ctx.Queue()
         self.queue_listener = logging.handlers.QueueListener(self.log_queue, *hdlrs, respect_handler_level=True)
         self.queue_listener.start()
         self.current_log_level = self.app._logger.getEffectiveLevel()
+
+        # start log config CDB subscriber
+        self.log_config_q = self.mp_ctx.Queue()
+        self.log_config_subscriber = Subscriber(app=self.app, log=self.log)
+        log_subscriber_iter = LogConfigSubscriber(self.log_config_q)
+        log_subscriber_iter.register(self.log_config_subscriber)
+        self.log_config_subscriber.start()
 
         self.worker = None
 
@@ -159,6 +189,7 @@ class Process(threading.Thread):
                     return
                 elif k == 'enabled':
                     self.config_enabled = v
+
             except Exception as e:
                 self.log.error('Unhandled exception in the supervisor thread', e)
                 self.log.debug(traceback.format_exc())
@@ -172,10 +203,14 @@ class Process(threading.Thread):
         self.log.debug("{}: stopping HA event listener".format(self.name))
         self.ha_event_listener.stop()
 
-        # stop CDB subscriber
-        self.log.debug("{}: stopping CDB config subscriber".format(self.name))
+        # stop config CDB subscriber
+        self.log.debug("{}: stopping config CDB subscriber".format(self.name))
         if self.config_path is not None:
             self.config_subscriber.stop()
+
+        # stop log config CDB subscriber
+        self.log.debug("{}: stopping log config CDB subscriber".format(self.name))
+        self.log_config_subscriber.stop()
 
         # stop the logging QueueListener
         self.log.debug("{}: stopping logging QueueListener".format(self.name))
@@ -202,7 +237,7 @@ class Process(threading.Thread):
 
         # Instead of calling the bg_fun worker function directly, call our
         # internal wrapper to set up inter-process logging through a queue.
-        args = [self.log_queue, self.current_log_level, self.bg_fun] + self.bg_fun_args
+        args = [self.log_queue, self.log_config_q, self.current_log_level, self.bg_fun] + self.bg_fun_args
         self.worker = self.mp_ctx.Process(target=_bg_wrapper, args=args)
         self.worker.start()
 
@@ -251,6 +286,35 @@ class ConfigSubscriber(object):
 
     def post_iterate(self, state):
         self.q.put(("enabled", bool(state['enabled'])))
+
+
+class LogConfigSubscriber(object):
+    """CDB subscriber for python-vm logging level
+
+    This subscribers monitors /python-vm/logging/level and propagates any
+    changes to the child process which can then in turn log at the appropriate
+    level.
+    """
+    def __init__(self, q):
+        self.q = q
+
+    def register(self, subscriber):
+        subscriber.register('/python-vm/logging/level', priority=101, iter_obj=self)
+
+    def pre_iterate(self):
+        return {'level': 0}
+
+    def iterate(self, keypath_unused, operation_unused, oldval_unused, newval, state):
+        # the log level enum in the YANG model maps the integer values to
+        # python log levels quite nicely just by adding 1 and multiplying by 10
+        state['level'] = (int(newval)+1) * 10
+        return ncs.ITER_RECURSE
+
+    def should_post_iterate(self, state_unused):
+        return True
+
+    def post_iterate(self, state):
+        self.q.put(("log-level", state['level']))
 
 
 class HaEventListener(threading.Thread):

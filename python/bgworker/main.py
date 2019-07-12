@@ -19,12 +19,15 @@ def bg_worker():
             root.bgworker.counter += 1
             oper_trans_write.apply()
 
-#        log.info("Hello from background worker process, increment counter from {} to {}".format(cur_val, cur_val+1))
         log.debug("Hello from background worker process, increment counter from {} to {}".format(cur_val, cur_val+1))
+        log.info("Hello from background worker process, increment counter from {} to {}".format(cur_val, cur_val+1))
+        log.warning("Hello from background worker process, increment counter from {} to {}".format(cur_val, cur_val+1))
+        log.error("Hello from background worker process, increment counter from {} to {}".format(cur_val, cur_val+1))
+        log.critical("Hello from background worker process, increment counter from {} to {}".format(cur_val, cur_val+1))
 #        if random.randint(0, 10) == 9:
 #            log.error("Bad dice value")
 #            sys.exit(1)
-        time.sleep(1)
+        time.sleep(2)
 
 class Main(ncs.application.Application):
     def setup(self):
