@@ -50,7 +50,7 @@ def _get_handler_impls(logger: logging.Logger) -> typing.Iterable[logging.Handle
             c = c.parent
 
 
-def _bg_wrapper(bg_fun, q, log_level, *bg_fun_args):
+def _bg_wrapper(q, log_level, bg_fun, *bg_fun_args):
     """Internal wrapper for the background worker function.
 
     Used to set up logging via a QueueHandler in the child process. The other end
@@ -202,7 +202,7 @@ class Process(threading.Thread):
 
         # Instead of calling the bg_fun worker function directly, call our
         # internal wrapper to set up inter-process logging through a queue.
-        args = [self.bg_fun, self.log_queue, self.current_log_level] + self.bg_fun_args
+        args = [self.log_queue, self.current_log_level, self.bg_fun] + self.bg_fun_args
         self.worker = self.mp_ctx.Process(target=_bg_wrapper, args=args)
         self.worker.start()
 
