@@ -108,7 +108,7 @@ class Process(threading.Thread):
         self.vmid = self.app._ncs_id
 
         self.mp_ctx = multiprocessing.get_context('spawn')
-        self.q = multiprocessing.Queue()
+        self.q = self.mp_ctx.Queue()
 
         # start the config subscriber thread
         if self.config_path is not None:
