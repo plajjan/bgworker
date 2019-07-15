@@ -108,7 +108,7 @@ class Process(threading.Thread):
         self.vmid = self.app._ncs_id
 
         self.mp_ctx = multiprocessing.get_context('spawn')
-        self.q = queue.Queue()
+        self.q = multiprocessing.Queue()
 
         # start the config subscriber thread
         if self.config_path is not None:
@@ -181,16 +181,16 @@ class Process(threading.Thread):
                     self.log.info("Background worker process is running but should not run, stopping")
                     self.worker_stop()
 
-                try:
-                    item = self.q.get(timeout=1)
-                except queue.Empty:
-                    continue
+                # check for input
+                rfds, _, _ = select.select([self.q._reader, self.parent_pipe], [], [], 1)
+                for rfd in rfds:
+                    if rfd == self.q._reader:
+                        k, v = self.q.get()
 
-                k, v = item
-                if k == 'exit':
-                    return
-                elif k == 'enabled':
-                    self.config_enabled = v
+                        if k == 'exit':
+                            return
+                        elif k == 'enabled':
+                            self.config_enabled = v
 
             except Exception as e:
                 self.log.error('Unhandled exception in the supervisor thread', e)
