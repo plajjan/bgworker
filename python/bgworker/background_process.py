@@ -197,6 +197,8 @@ class Process(threading.Thread):
                             return
                         elif k == 'enabled':
                             self.config_enabled = v
+                        elif k == 'ha-master':
+                            self.ha_master == v
 
                     if rfd == self.parent_pipe:
                         # getting a readable event on the pipe should mean the
@@ -411,9 +413,9 @@ class HaEventListener(threading.Thread):
             ha_notif_type = notification['hnot']['type']
 
             if ha_notif_type == events.HA_INFO_IS_MASTER:
-                self.q.put(('ha-mode', 'master'))
+                self.q.put(('ha-master', True))
             elif ha_notif_type == events.HA_INFO_IS_NONE:
-                self.q.put(('ha-mode', 'none'))
+                self.q.put(('ha-master', False))
 
     def stop(self):
         self.exit_flag.set()
