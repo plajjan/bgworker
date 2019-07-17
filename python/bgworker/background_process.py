@@ -18,6 +18,7 @@ import os
 import select
 import socket
 import threading
+import time
 import traceback
 import typing
 
@@ -201,8 +202,9 @@ class Process(threading.Thread):
                             self.worker.join()
 
             except Exception as e:
-                self.log.error('Unhandled exception in the supervisor thread', e)
+                self.log.error('Unhandled exception in the supervisor thread: {} ({})'.format(type(e).__name__, e))
                 self.log.debug(traceback.format_exc())
+                time.sleep(1)
 
 
     def stop(self):
