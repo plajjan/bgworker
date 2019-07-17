@@ -50,7 +50,7 @@ def _get_handler_impls(logger: logging.Logger) -> typing.Iterable[logging.Handle
             c = c.parent
 
 
-def _bg_wrapper(log_q, log_config_q, log_level, bg_fun, *bg_fun_args):
+def _bg_wrapper(pipe, log_q, log_config_q, log_level, bg_fun, *bg_fun_args):
     """Internal wrapper for the background worker function.
 
     Used to set up logging via a QueueHandler in the child process. The other end
@@ -108,7 +108,7 @@ class Process(threading.Thread):
         self.vmid = self.app._ncs_id
 
         self.mp_ctx = multiprocessing.get_context('spawn')
-        self.q = queue.Queue()
+        self.q = self.mp_ctx.Queue()
 
         # start the config subscriber thread
         if self.config_path is not None:
@@ -181,16 +181,24 @@ class Process(threading.Thread):
                     self.log.info("Background worker process is running but should not run, stopping")
                     self.worker_stop()
 
-                try:
-                    item = self.q.get(timeout=1)
-                except queue.Empty:
-                    continue
+                # check for input
+                rfds, _, _ = select.select([self.q._reader, self.parent_pipe], [], [])
+                for rfd in rfds:
+                    if rfd == self.q._reader:
+                        k, v = self.q.get()
 
-                k, v = item
-                if k == 'exit':
-                    return
-                elif k == 'enabled':
-                    self.config_enabled = v
+                        if k == 'exit':
+                            return
+                        elif k == 'enabled':
+                            self.config_enabled = v
+
+                    if rfd == self.parent_pipe:
+                        # getting a readable event on the pipe should mean the
+                        # child is dead - wait for it to die and start again
+                        # we'll restart it at the top of the loop
+                        self.log.info("Child process died")
+                        if self.worker.is_alive():
+                            self.worker.join()
 
             except Exception as e:
                 self.log.error('Unhandled exception in the supervisor thread', e)
@@ -237,21 +245,32 @@ class Process(threading.Thread):
         # Instead of using the usual worker thread, we use a separate process here.
         # This allows us to terminate the process on package reload / NSO shutdown.
 
+        # using multiprocessing.Pipe which is shareable across a spawned
+        # process, while os.pipe only works, per default over to a forked
+        # child
+        self.parent_pipe, self.child_pipe = self.mp_ctx.Pipe()
+
         # Instead of calling the bg_fun worker function directly, call our
-        # internal wrapper to set up inter-process logging through a queue.
-        args = [self.log_queue, self.log_config_q, self.current_log_level, self.bg_fun] + self.bg_fun_args
+        # internal wrapper to set up things like inter-process logging through
+        # a queue.
+        args = [self.child_pipe, self.log_queue, self.log_config_q, self.current_log_level, self.bg_fun] + self.bg_fun_args
         self.worker = self.mp_ctx.Process(target=_bg_wrapper, args=args)
         self.worker.start()
+
+        # close child pipe in parent so only child is in possession of file
+        # handle, which means we get EOF when the child dies
+        self.child_pipe.close()
 
 
     def worker_stop(self):
         """Stops the background worker process
         """
-        self.log.info("{}: stopping the background worker process".format(self.name))
         if self.worker is None:
-            self.log.info("{}: background worker is not running".format(self.name))
+            self.log.info("{}: asked to stop worker but background worker does not exist".format(self.name))
             return
-        self.worker.terminate()
+        if self.worker.is_alive():
+            self.log.info("{}: stopping the background worker process".format(self.name))
+            self.worker.terminate()
         self.worker.join(timeout=1)
         if self.worker.is_alive():
             self.log.error("{}: worker not terminated on time, alive: {}  process: {}".format(self, self.worker.is_alive(), self.worker))
