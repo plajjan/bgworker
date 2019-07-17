@@ -398,7 +398,7 @@ class HaEventListener(threading.Thread):
         from _ncs import events
         mask = events.NOTIF_HA_INFO
         event_socket = socket.socket()
-        events.notifications_connect(event_socket, mask, ip='127.0.0.1', port=ncs.NCS_PORT)
+        events.notifications_connect(event_socket, mask, ip='127.0.0.1', port=ncs.PORT)
         while True:
             rl, _, _ = select.select([self.exit_flag, event_socket], [], [])
             if self.exit_flag in rl:
