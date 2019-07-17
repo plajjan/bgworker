@@ -184,10 +184,11 @@ class Process(threading.Thread):
                     self.worker_stop()
 
                 # check for input
+                waitable_rfds = [self.q._reader]
                 if should_run:
-                    rfds, _, _ = select.select([self.q._reader, self.parent_pipe], [], [])
-                else:
-                    rfds, _, _ = select.select([self.q._reader], [], [])
+                    waitable_rfds.append(self.parent_pipe)
+
+                rfds, _, _ = select.select(waitable_rfds, [], [])
                 for rfd in rfds:
                     if rfd == self.q._reader:
                         k, v = self.q.get()
