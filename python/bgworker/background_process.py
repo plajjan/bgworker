@@ -100,6 +100,7 @@ class Process(threading.Thread):
             bg_fun_args = []
         self.bg_fun_args = bg_fun_args
         self.config_path = config_path
+        self.parent_pipe = None
 
         self.log = app.log
         self.name = "{}.{}".format(self.app.__class__.__module__,
@@ -183,7 +184,10 @@ class Process(threading.Thread):
                     self.worker_stop()
 
                 # check for input
-                rfds, _, _ = select.select([self.q._reader, self.parent_pipe], [], [])
+                if should_run:
+                    rfds, _, _ = select.select([self.q._reader, self.parent_pipe], [], [])
+                else:
+                    rfds, _, _ = select.select([self.q._reader], [], [])
                 for rfd in rfds:
                     if rfd == self.q._reader:
                         k, v = self.q.get()
