@@ -24,12 +24,6 @@ import typing
 
 import ncs
 from ncs.experimental import Subscriber
-# queue module is called Queue in py2, we import with py3 name since the
-# exposed interface is similar enough
-try:
-    import queue
-except ImportError:
-    import Queue as queue
 
 
 def _get_handler_impls(logger: logging.Logger) -> typing.Iterable[logging.Handler]:
@@ -51,7 +45,7 @@ def _get_handler_impls(logger: logging.Logger) -> typing.Iterable[logging.Handle
             c = c.parent
 
 
-def _bg_wrapper(pipe, log_q, log_config_q, log_level, bg_fun, *bg_fun_args):
+def _bg_wrapper(pipe_unused, log_q, log_config_q, log_level, bg_fun, *bg_fun_args):
     """Internal wrapper for the background worker function.
 
     Used to set up logging via a QueueHandler in the child process. The other end
@@ -66,7 +60,11 @@ def _bg_wrapper(pipe, log_q, log_config_q, log_level, bg_fun, *bg_fun_args):
     log_reconf = LogReconfigurator(log_config_q, root)
     log_reconf.start()
 
-    bg_fun(*bg_fun_args)
+    try:
+        bg_fun(*bg_fun_args)
+    except Exception as e:
+        root.error('Unhandled error in {} - {}: {}'.format(bg_fun.__name__, type(e).__name__, e))
+        root.debug(traceback.format_exc())
 
 
 class LogReconfigurator(threading.Thread):
@@ -197,8 +195,8 @@ class Process(threading.Thread):
                             return
                         elif k == 'enabled':
                             self.config_enabled = v
-                        elif k == 'ha-master':
-                            self.ha_master == v
+                        elif k == "ha-master":
+                            self.ha_master = v
 
                     if rfd == self.parent_pipe:
                         # getting a readable event on the pipe should mean the
@@ -257,18 +255,18 @@ class Process(threading.Thread):
         # using multiprocessing.Pipe which is shareable across a spawned
         # process, while os.pipe only works, per default over to a forked
         # child
-        self.parent_pipe, self.child_pipe = self.mp_ctx.Pipe()
+        self.parent_pipe, child_pipe = self.mp_ctx.Pipe()
 
         # Instead of calling the bg_fun worker function directly, call our
         # internal wrapper to set up things like inter-process logging through
         # a queue.
-        args = [self.child_pipe, self.log_queue, self.log_config_q, self.current_log_level, self.bg_fun] + self.bg_fun_args
+        args = [child_pipe, self.log_queue, self.log_config_q, self.current_log_level, self.bg_fun] + self.bg_fun_args
         self.worker = self.mp_ctx.Process(target=_bg_wrapper, args=args)
         self.worker.start()
 
         # close child pipe in parent so only child is in possession of file
         # handle, which means we get EOF when the child dies
-        self.child_pipe.close()
+        child_pipe.close()
 
 
     def worker_stop(self):
@@ -337,11 +335,11 @@ class LogConfigSubscriber(object):
         with ncs.maapi.single_read_trans('', 'system') as t_read:
             try:
                 self.global_level = ncs.maagic.get_node(t_read, '/python-vm/logging/level')
-            except:
+            except Exception:
                 self.global_level = None
             try:
                 self.vm_level = ncs.maagic.get_node(t_read, '/python-vm/logging/vm-levels{{{}}}/level'.format(self.vmid))
-            except:
+            except Exception:
                 self.vm_level = None
 
     def register(self, subscriber):
@@ -415,6 +413,8 @@ class HaEventListener(threading.Thread):
             if ha_notif_type == events.HA_INFO_IS_MASTER:
                 self.q.put(('ha-master', True))
             elif ha_notif_type == events.HA_INFO_IS_NONE:
+                self.q.put(('ha-master', False))
+            elif ha_notif_type == events.HA_INFO_SLAVE_INITIALIZED:
                 self.q.put(('ha-master', False))
 
     def stop(self):
