@@ -45,7 +45,7 @@ def _get_handler_impls(logger: logging.Logger) -> typing.Iterable[logging.Handle
             c = c.parent
 
 
-def _bg_wrapper(pipe, log_q, log_config_q, log_level, bg_fun, *bg_fun_args):
+def _bg_wrapper(pipe_unused, log_q, log_config_q, log_level, bg_fun, *bg_fun_args):
     """Internal wrapper for the background worker function.
 
     Used to set up logging via a QueueHandler in the child process. The other end
