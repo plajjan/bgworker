@@ -60,7 +60,11 @@ def _bg_wrapper(pipe_unused, log_q, log_config_q, log_level, bg_fun, *bg_fun_arg
     log_reconf = LogReconfigurator(log_config_q, root)
     log_reconf.start()
 
-    bg_fun(*bg_fun_args)
+    try:
+        bg_fun(*bg_fun_args)
+    except Exception as e:
+        root.error('Unhandled error in {} - {}: {}'.format(bg_fun.__name__, type(e).__name__, e))
+        root.debug(traceback.format_exc())
 
 
 class LogReconfigurator(threading.Thread):
