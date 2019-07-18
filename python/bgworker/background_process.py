@@ -331,11 +331,11 @@ class LogConfigSubscriber(object):
         with ncs.maapi.single_read_trans('', 'system') as t_read:
             try:
                 self.global_level = ncs.maagic.get_node(t_read, '/python-vm/logging/level')
-            except:
+            except Exception:
                 self.global_level = None
             try:
                 self.vm_level = ncs.maagic.get_node(t_read, '/python-vm/logging/vm-levels{{{}}}/level'.format(self.vmid))
-            except:
+            except Exception:
                 self.vm_level = None
 
     def register(self, subscriber):
