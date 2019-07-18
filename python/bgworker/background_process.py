@@ -197,8 +197,8 @@ class Process(threading.Thread):
                             return
                         elif k == 'enabled':
                             self.config_enabled = v
-                        elif k == 'ha-master':
-                            self.ha_master == v
+                        elif k == "ha-master":
+                            self.ha_master = v
 
                     if rfd == self.parent_pipe:
                         # getting a readable event on the pipe should mean the
