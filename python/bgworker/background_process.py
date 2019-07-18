@@ -416,6 +416,8 @@ class HaEventListener(threading.Thread):
                 self.q.put(('ha-master', True))
             elif ha_notif_type == events.HA_INFO_IS_NONE:
                 self.q.put(('ha-master', False))
+            elif ha_notif_type == events.HA_INFO_SLAVE_INITIALIZED:
+                self.q.put(('ha-master', False))
 
     def stop(self):
         self.exit_flag.set()
