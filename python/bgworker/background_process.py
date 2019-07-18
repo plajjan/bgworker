@@ -24,12 +24,6 @@ import typing
 
 import ncs
 from ncs.experimental import Subscriber
-# queue module is called Queue in py2, we import with py3 name since the
-# exposed interface is similar enough
-try:
-    import queue
-except ImportError:
-    import Queue as queue
 
 
 def _get_handler_impls(logger: logging.Logger) -> typing.Iterable[logging.Handler]:
