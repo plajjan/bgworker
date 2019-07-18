@@ -251,18 +251,18 @@ class Process(threading.Thread):
         # using multiprocessing.Pipe which is shareable across a spawned
         # process, while os.pipe only works, per default over to a forked
         # child
-        self.parent_pipe, self.child_pipe = self.mp_ctx.Pipe()
+        self.parent_pipe, child_pipe = self.mp_ctx.Pipe()
 
         # Instead of calling the bg_fun worker function directly, call our
         # internal wrapper to set up things like inter-process logging through
         # a queue.
-        args = [self.child_pipe, self.log_queue, self.log_config_q, self.current_log_level, self.bg_fun] + self.bg_fun_args
+        args = [child_pipe, self.log_queue, self.log_config_q, self.current_log_level, self.bg_fun] + self.bg_fun_args
         self.worker = self.mp_ctx.Process(target=_bg_wrapper, args=args)
         self.worker.start()
 
         # close child pipe in parent so only child is in possession of file
         # handle, which means we get EOF when the child dies
-        self.child_pipe.close()
+        child_pipe.close()
 
 
     def worker_stop(self):
