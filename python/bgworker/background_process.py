@@ -153,7 +153,9 @@ class Process(threading.Thread):
                 # This is an expensive operation invoking a data provider, thus
                 # we don't want to incur any unnecessary locks
                 with m.start_read_trans(db=ncs.OPERATIONAL) as oper_t_read:
-                    # check if HA is enabled
+                    # Check if HA is enabled. This can only be configured in
+                    # ncs.conf and requires NSO restart, so it is fine if we
+                    # just read it the once.
                     if oper_t_read.exists("/tfnm:ncs-state/tfnm:ha"):
                         self.ha_enabled = True
                     else:
