@@ -42,6 +42,12 @@ it. NSO 5.3 deprecates support for Python 2. It is weird that NSO doesn't ship
 with using Python 3 per default, so you have to enable this yourself (it is
 documented in the user guide).
 
+* HA enabled
+  Reading the status of HA, whether HA is enabled or disabled, is only performed
+  at startup. It is currently not possible to change enable or disable HA in NCS
+  by only issuing a reload. If this changes in a newer version of NCS, then we
+  would need to react to this too.
+
 * Recommended use / design pattern
 ** A note on error handling and anti-patterns
    It appears the following is a rather intuitive code pattern:
